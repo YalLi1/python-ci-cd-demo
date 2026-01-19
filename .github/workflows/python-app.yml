@@ -1,0 +1,60 @@
+name: Python Code Quality and Tests
+
+on:
+  push: # Запуск при пуше в любую ветку
+    branches: [ "**" ]
+  pull_request: # Запуск при создании Pull Request
+    branches: [ "main" ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest # Используем последнюю версию Ubuntu
+
+    steps:
+    # 1. Получаем код из репозитория
+    - uses: actions/checkout@v4
+
+    # 2. Устанавливаем Python
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    # 3. Устанавливаем линтеры, форматтеры и тестовые библиотеки
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy pytest pytest-cov
+
+    # 4. Проверяем форматирование кода с помощью black (не исправляем, только проверяем)
+    - name: Check formatting with black
+      run: |
+        black --check .
+
+    # 5. Проверяем сортировку импортов с помощью isort (не исправляем, только проверяем)
+    - name: Check import sorting with isort
+      run: |
+        isort --check-only .
+
+    # 6. Проверяем стиль кода с помощью flake8
+    - name: Lint with flake8
+      run: |
+        flake8 .
+
+    # 7. Проверяем типы с помощью mypy
+    - name: Check types with mypy
+      run: |
+        mypy --ignore-missing-imports .
+
+    # 8. Запускаем тесты с измерением покрытия кода
+    - name: Test with pytest
+      run: |
+        pytest --cov=./ --cov-report=xml -v
+
+    # 9. (Опционально) Загружаем отчет о покрытии кода как артефакт
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-report
+        path: coverage.xml
