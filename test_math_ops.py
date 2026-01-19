@@ -1,6 +1,7 @@
 """
 Тесты для модуля math_ops.
 """
+
 import pytest
 from math_ops import add_numbers, multiply_numbers
 
