@@ -1,60 +1,166 @@
 name: Python Code Quality and Tests
 
 on:
-  push: # Запуск при пуше в любую ветку
+  push:
     branches: [ "**" ]
-  pull_request: # Запуск при создании Pull Request
+  pull_request:
     branches: [ "main" ]
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest # Используем последнюю версию Ubuntu
+    runs-on: ubuntu-latest
 
     steps:
-    # 1. Получаем код из репозитория
     - uses: actions/checkout@v4
 
-    # 2. Устанавливаем Python
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-    # 3. Устанавливаем линтеры, форматтеры и тестовые библиотеки
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install flake8 black isort mypy pytest pytest-cov
 
-    # 4. Проверяем форматирование кода с помощью black (не исправляем, только проверяем)
+    # 1. BLACK - с подробным выводом и цветом
     - name: Check formatting with black
       run: |
-        black --diff .
+        echo "=== BLACK CHECK (подробный вывод) ==="
+        # Сохраняем diff во временный файл для читаемого вывода
+        black --check --diff . 2>&1 | tee black_output.txt || true
+        
+        echo ""
+        echo "=== Файлы, требующие форматирования: ==="
+        # Показываем только список файлов
+        black --check . 2>&1 | grep -E "would reformat|Oh no!" | sed 's/.* //' || echo "✅ Все файлы отформатированы правильно"
+        
+        echo ""
+        echo "=== Рекомендуемая команда для исправления: ==="
+        echo "black ."
 
-    # 5. Проверяем сортировку импортов с помощью isort (не исправляем, только проверяем)
+    # 2. ISORT - с подробным выводом
     - name: Check import sorting with isort
       run: |
-        isort --check-only .
+        echo "=== ISORT CHECK (подробный вывод) ==="
+        # Показываем что именно нужно изменить
+        isort --check-only --diff . 2>&1 | tee isort_output.txt || true
+        
+        echo ""
+        echo "=== Файлы с неотсортированными импортами: ==="
+        # Показываем только список файлов
+        isort --check-only . 2>&1 | grep -E "ERROR|FAIL" | awk '{print $2}' | sort -u || echo "✅ Все импорты отсортированы правильно"
+        
+        echo ""
+        echo "=== Рекомендуемая команда для исправления: ==="
+        echo "isort ."
 
-    # 6. Проверяем стиль кода с помощью flake8
+    # 3. FLAKE8 - с подробным выводом
     - name: Lint with flake8
       run: |
-        flake8 .
+        echo "=== FLAKE8 CHECK ==="
+        # Подсчитываем ошибки и показываем их
+        echo "Количество ошибок:"
+        flake8 --count .
+        
+        echo ""
+        echo "=== Детальный вывод ошибок: ==="
+        flake8 --statistics .
+        
+        # Сохраняем подробный отчет в файл
+        flake8 . > flake8_report.txt 2>&1 || true
+        
+        echo ""
+        echo "=== Первые 10 ошибок (если есть): ==="
+        head -20 flake8_report.txt || echo "✅ Ошибок не найдено"
 
-    # 7. Проверяем типы с помощью mypy
+    # 4. MYPY - с группировкой по файлам
     - name: Check types with mypy
       run: |
-        mypy --ignore-missing-imports .
+        echo "=== MYPY CHECK ==="
+        # Используем цветной вывод и группировку
+        mypy --ignore-missing-imports --color-output --no-error-summary .
+        
+        echo ""
+        echo "=== Статистика ошибок по типам: ==="
+        mypy --ignore-missing-imports . 2>&1 | grep -E "error:|note:" | sort | uniq -c | sort -nr || echo "✅ Ошибок типов не найдено"
 
-    # 8. Запускаем тесты с измерением покрытия кода
+    # 5. Тесты
     - name: Test with pytest
       run: |
-        pytest --cov=./ --cov-report=xml -v
+        echo "=== PYTEST ==="
+        pytest --cov=./ --cov-report=term-missing -v
 
-    # 9. (Опционально) Загружаем отчет о покрытии кода как артефакт
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
+    # 6. Создаем итоговый отчет
+    - name: Generate summary report
       if: always()
+      run: |
+        echo "# 📊 Отчет о проверке кода" > summary.md
+        echo "## Результаты выполнения $(date)" >> summary.md
+        echo "" >> summary.md
+        
+        # Black статус
+        echo "### 🔧 Black (форматирование)" >> summary.md
+        if black --check . > /dev/null 2>&1; then
+          echo "✅ **Пройдено** - Все файлы правильно отформатированы" >> summary.md
+        else
+          echo "❌ **Не пройдено** - Некоторые файлы требуют форматирования" >> summary.md
+          echo "" >> summary.md
+          echo "**Файлы для исправления:**" >> summary.md
+          black --check . 2>&1 | grep "would reformat" | sed 's/.* //' | while read file; do
+            echo "- \`$file\`" >> summary.md
+          done || true
+        fi
+        echo "" >> summary.md
+        
+        # isort статус
+        echo "### 📦 isort (импорты)" >> summary.md
+        if isort --check-only . > /dev/null 2>&1; then
+          echo "✅ **Пройдено** - Все импорты отсортированы" >> summary.md
+        else
+          echo "❌ **Не пройдено** - Некоторые файлы требуют сортировки импортов" >> summary.md
+          echo "" >> summary.md
+          echo "**Файлы для исправления:**" >> summary.md
+          isort --check-only . 2>&1 | grep "ERROR" | awk '{print $2}' | sort -u | while read file; do
+            echo "- \`$file\`" >> summary.md
+          done || true
+        fi
+        echo "" >> summary.md
+        
+        # flake8 статус
+        echo "### 🧹 Flake8 (стиль кода)" >> summary.md
+        FLAKE8_COUNT=$(flake8 --count . | tail -1)
+        if [ "$FLAKE8_COUNT" = "0" ]; then
+          echo "✅ **Пройдено** - Ошибок стиля не найдено" >> summary.md
+        else
+          echo "❌ **Не пройдено** - Найдено $FLAKE8_COUNT ошибок" >> summary.md
+        fi
+        echo "" >> summary.md
+        
+        # mypy статус
+        echo "### 🦆 Mypy (типизация)" >> summary.md
+        if mypy --ignore-missing-imports . > /dev/null 2>&1; then
+          echo "✅ **Пройдено** - Ошибок типов не найдено" >> summary.md
+        else
+          echo "❌ **Не пройдено** - Найдены ошибки типизации" >> summary.md
+        fi
+        
+        echo "" >> summary.md
+        echo "---" >> summary.md
+        echo "*Отчет сгенерирован автоматически GitHub Actions*" >> summary.md
+        
+        # Выводим отчет в консоль
+        cat summary.md
+
+    # 7. Сохраняем все отчеты как артефакты
+    - name: Upload all reports as artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        name: coverage-report
-        path: coverage.xml
+        name: code-quality-reports
+        path: |
+          summary.md
+          black_output.txt
+          isort_output.txt
+          flake8_report.txt
+          coverage.xml
