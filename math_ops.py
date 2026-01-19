@@ -2,7 +2,7 @@
 Простой модуль для математических операций.
 """
 
-def add_numbers(a: int | float, b: int | float) -> int | float:
+def add_numbers(  a: int | float, b  : int | float) -> int | float:
     """
     Возвращает сумму двух чисел.
 
