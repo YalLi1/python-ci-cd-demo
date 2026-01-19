@@ -29,7 +29,7 @@ jobs:
     # 4. Проверяем форматирование кода с помощью black (не исправляем, только проверяем)
     - name: Check formatting with black
       run: |
-        black --check .
+        black --diff .
 
     # 5. Проверяем сортировку импортов с помощью isort (не исправляем, только проверяем)
     - name: Check import sorting with isort
